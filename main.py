@@ -2,14 +2,10 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox
-)
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
 import geocoder
-
 
 class MountSystem:
     def __init__(self, azimuth=0, elevation=5, length=5):
@@ -24,7 +20,6 @@ class MountSystem:
         dy = self.length * np.cos(alt_rad) * np.sin(az_rad)
         dz = self.length * np.sin(alt_rad)
         return dx, dy, dz
-
 
 class VisualizationSystem:
     def __init__(self, fig):
@@ -61,29 +56,15 @@ class VisualizationSystem:
 
         self.ax.plot_surface(Xr + dx, Yr + dy, Zr + dz, color='cyan', alpha=0.3)
 
-    def set_star_background(self, n_stars=200):
-        """Draws a starry sky background with tinted axes panes."""
-        self.ax.xaxis.pane.set_facecolor((0.1, 0.1, 0.25, 1.0))
-        self.ax.yaxis.pane.set_facecolor((0.05, 0.05, 0.2, 1.0)) 
-        self.ax.zaxis.pane.set_facecolor((0.0, 0.0, 0.1, 1.0)) 
-        for pane in [self.ax.xaxis.pane, self.ax.yaxis.pane, self.ax.zaxis.pane]:
-            pane.set_edgecolor("none")
-
-        xs = np.random.uniform(-10, 10, n_stars)
-        ys = np.random.uniform(-10, 10, n_stars)
-        zs = np.random.uniform(0, 10, n_stars)
-        self.ax.scatter(xs, ys, zs, color="white", s=2, alpha=0.6)
-
-    def finalize_plot(self, length=5):
-        max_range = length * 1.5
-        self.ax.set_xlim(-max_range, max_range)
-        self.ax.set_ylim(-max_range, max_range)
-        self.ax.set_zlim(0, max_range)
-        self.ax.set_title("Newtonian Telescope Orientation", color="white")
-        self.ax.set_xlabel("X (East)", color="white")
-        self.ax.set_ylabel("Y (North)", color="white")
-        self.ax.set_zlabel("Z (Up)", color="white")
-        self.ax.legend(loc="upper left", fontsize=8, frameon=False)
+    def finalize_plot(self):
+        self.ax.set_xlim(-6, 6)
+        self.ax.set_ylim(-6, 6)
+        self.ax.set_zlim(0, 6)
+        self.ax.set_title("Newtonian Telescope Orientation")
+        self.ax.set_xlabel("X (East)")
+        self.ax.set_ylabel("Y (North)")
+        self.ax.set_zlabel("Z (Up)")
+        self.ax.legend()
 
 
 class Newtonian_TelescopeApp(QMainWindow):
@@ -91,6 +72,7 @@ class Newtonian_TelescopeApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Newtonian Telescope Simulator")
         self.setFixedSize(800, 800)
+
         self.setStyleSheet("background-color: #1c1c1c; color: white;")
 
         g = geocoder.ip('me')
@@ -102,6 +84,9 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.mount = MountSystem()
         self.show_axes_val = True
 
+        self.fig = plt.figure()
+        self.fig.patch.set_facecolor("#1c1c1c")  
+
         self.initUI()
 
     def initUI(self):
@@ -110,15 +95,14 @@ class Newtonian_TelescopeApp(QMainWindow):
         layout = QVBoxLayout()
         central_widget.setLayout(layout)
 
-
         self.fig = plt.figure()
-        self.fig.patch.set_facecolor("#1c1c1c")
         self.canvas = FigureCanvas(self.fig)
-        self.canvas.setFixedHeight(700)
+        self.canvas.setFixedHeight(700)  
         layout.addWidget(self.canvas)
         self.visualizer = VisualizationSystem(self.fig)
 
         bottom_layout = QHBoxLayout()
+
         self.location_label = QLabel(
             f"Device Location: Lat {self.device_lat:.6f}°, Lon {self.device_lon:.6f}°"
         )
@@ -128,15 +112,17 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.watermark_label = QLabel("Powered by Neutonians")
         self.watermark_label.setStyleSheet("color: white; font-size: 10px; font-style: italic; letter-spacing: 3px;")
         bottom_layout.addWidget(self.watermark_label, alignment=Qt.AlignRight)
+
         layout.addLayout(bottom_layout)
 
         controls = QHBoxLayout()
+
         self.az_label = QLabel("Azimuth:")
         self.az_deg = QSpinBox()
-        self.az_deg.setRange(0, 359)
+        self.az_deg.setRange(0, 359)  
         self.az_deg.setValue(self.mount.azimuth)
         self.az_min = QSpinBox()
-        self.az_min.setRange(0, 59)
+        self.az_min.setRange(0, 59)   
         self.az_min.setValue(0)
         self.az_deg.valueChanged.connect(self.update_and_plot)
         self.az_min.valueChanged.connect(self.update_and_plot)
@@ -185,6 +171,7 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         controls.addWidget(self.plot_button)
         controls.addWidget(self.show_axes_checkbox)
+        
         controls.addWidget(self.preset_label)
         controls.addWidget(self.preset_combo)
 
@@ -210,35 +197,29 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.el_min.setValue(el_min)
 
     def apply_preset(self, index):
-        if index == 1:  
-            self.set_orientation(0, self.device_lat)
-        elif index == 2: 
+        if index == 1:   # Polaris
+            self.set_orientation(0, 45)
+        elif index == 2: # Zenith
             self.set_orientation(0, 90)
-        elif index == 3: 
+        elif index == 3: # Horizon North
             self.set_orientation(0, 0)
-        elif index == 4: 
+        elif index == 4: # Horizon East
             self.set_orientation(90, 0)
-        elif index == 5: 
+        elif index == 5: # Horizon South
             self.set_orientation(180, 0)
-        elif index == 6: 
+        elif index == 6: # Horizon West
             self.set_orientation(270, 0)
 
     def plot_telescope(self):
         self.visualizer.clear()
-        self.visualizer.set_star_background() 
-
         if self.show_axes_val:
             self.visualizer.draw_axes()
 
         dx, dy, dz = self.mount.get_orientation_vector()
         self.visualizer.draw_telescope(dx, dy, dz)
         self.visualizer.draw_fov_cone(dx, dy, dz)
-        self.visualizer.finalize_plot(self.mount.length)
+        self.visualizer.finalize_plot()
         self.canvas.draw()
-
-    def closeEvent(self, event):
-        plt.close('all')
-        event.accept()
 
 
 if __name__ == "__main__":
