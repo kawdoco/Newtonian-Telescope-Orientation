@@ -23,11 +23,10 @@ class MountSystem:
 
 class VisualizationSystem:
     def __init__(self, fig):
-        self.ax = fig.add_subplot(111, projection='3d', facecolor='#1c1c1c')
+        self.ax = fig.add_subplot(111, projection='3d')
 
     def clear(self):
         self.ax.clear()
-        self.ax.set_facecolor('#1c1c1c')
 
     def draw_axes(self):
         self.ax.quiver(0, 0, 0, 2, 0, 0, color="r", label="X (East)", arrow_length_ratio=0.1)
@@ -35,8 +34,8 @@ class VisualizationSystem:
         self.ax.quiver(0, 0, 0, 0, 0, 2, color="b", label="Z (Up)", arrow_length_ratio=0.1)
 
     def draw_telescope(self, dx, dy, dz):
-        self.ax.plot([0, dx], [0, dy], [0, dz], color="lightblue", linewidth=3)
-        self.ax.scatter(dx, dy, dz, color="gold", s=80)
+        self.ax.plot([0, dx], [0, dy], [0, dz], color="blue", linewidth=3)
+        self.ax.scatter(dx, dy, dz, color="red", s=80)
 
     def draw_fov_cone(self, dx, dy, dz):
         cone_length = 1.5
@@ -50,48 +49,34 @@ class VisualizationSystem:
 
         direction = np.array([dx, dy, dz])
         direction = direction / np.linalg.norm(direction)
-        
-        try:
-            rot = R.align_vectors([direction], [[0, 0, 1]])[0]
-        except ValueError:
-            rot = R.identity() 
-            
+        rot = R.align_vectors([direction], [[0, 0, 1]])[0]
         coords = np.stack([X.flatten(), Y.flatten(), Z.flatten()])
         rotated = rot.apply(coords.T).T
         Xr, Yr, Zr = rotated.reshape(3, *X.shape)
 
-        self.ax.plot_surface(Xr + dx, Yr + dy, Zr + dz, color='cyan', alpha=0.2)
+        self.ax.plot_surface(Xr + dx, Yr + dy, Zr + dz, color='cyan', alpha=0.3)
 
     def finalize_plot(self):
         self.ax.set_xlim(-6, 6)
         self.ax.set_ylim(-6, 6)
         self.ax.set_zlim(0, 6)
-        self.ax.set_title("Simple Newtonian Telescope Orientation", color='white')
-        self.ax.set_xlabel("X (East)", color='white')
-        self.ax.set_ylabel("Y (North)", color='white')
-        self.ax.set_zlabel("Z (Up)", color='white')
-        
-        self.ax.tick_params(axis='x', colors='white')
-        self.ax.tick_params(axis='y', colors='white')
-        self.ax.tick_params(axis='z', colors='white')
-        self.ax.grid(color='#444444', linestyle='--')
-        self.ax.legend(facecolor='#2c2c2c', edgecolor='#555555', labelcolor='white')
+        self.ax.set_title("Newtonian Telescope Orientation")
+        self.ax.set_xlabel("X (East)")
+        self.ax.set_ylabel("Y (North)")
+        self.ax.set_zlabel("Z (Up)")
+        self.ax.legend()
 
 
-class Newtonian_TelescopeApp_Simple(QMainWindow):
+class Newtonian_TelescopeApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Simple Newtonian Telescope Simulator (prac)")
+        self.setWindowTitle("Newtonian Telescope Simulator")
         self.setFixedSize(800, 800)
-        self.setStyleSheet("background-color: #1c1c1c; color: white;")
-
 
         self.mount = MountSystem()
         self.show_axes_val = True
 
         self.initUI()
-        self.plot_telescope()
-
 
     def initUI(self):
         central_widget = QWidget()
@@ -100,7 +85,6 @@ class Newtonian_TelescopeApp_Simple(QMainWindow):
         central_widget.setLayout(layout)
 
         self.fig = plt.figure()
-        self.fig.patch.set_facecolor("#1c1c1c") 
         self.canvas = FigureCanvas(self.fig)
         layout.addWidget(self.canvas)
         self.visualizer = VisualizationSystem(self.fig)
@@ -121,16 +105,13 @@ class Newtonian_TelescopeApp_Simple(QMainWindow):
 
         self.plot_button = QPushButton("Plot")
         self.plot_button.clicked.connect(self.plot_telescope)
-        self.plot_button.setStyleSheet("background-color: #3f51b5; color: white; border-radius: 5px; padding: 5px 10px;")
 
         self.show_axes_checkbox = QCheckBox("Show Axes")
         self.show_axes_checkbox.setChecked(True)
         self.show_axes_checkbox.stateChanged.connect(self.toggle_axes)
 
-        self.preset_button = QPushButton("Point to Polaris (45°)")
+        self.preset_button = QPushButton("Point to Polaris")
         self.preset_button.clicked.connect(lambda: self.set_orientation(0, 45))
-        self.preset_button.setStyleSheet("background-color: #3f51b5; color: white; border-radius: 5px; padding: 5px 10px;")
-
 
         controls.addWidget(self.az_label)
         controls.addWidget(self.az_slider)
@@ -139,8 +120,6 @@ class Newtonian_TelescopeApp_Simple(QMainWindow):
         controls.addWidget(self.plot_button)
         controls.addWidget(self.show_axes_checkbox)
         controls.addWidget(self.preset_button)
-        controls.addStretch(1)
-
 
         layout.addLayout(controls)
 
@@ -169,3 +148,10 @@ class Newtonian_TelescopeApp_Simple(QMainWindow):
         self.visualizer.draw_fov_cone(dx, dy, dz)
         self.visualizer.finalize_plot()
         self.canvas.draw()
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = Newtonian_TelescopeApp()
+    window.show()
+    sys.exit(app.exec_())
