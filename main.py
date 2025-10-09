@@ -5,6 +5,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
+from log import LoginWindow
 import geocoder
 
 class MountSystem:
@@ -225,5 +226,8 @@ class Newtonian_TelescopeApp(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = Newtonian_TelescopeApp()
-    window.show()
+    login_window = LoginWindow()
+    login_window.login_successful.connect(lambda:(window.show(), login_window.close()))
+    login_window.show()
+    #window.show()
     sys.exit(app.exec_())
