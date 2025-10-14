@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
 class LoginWindow(QMainWindow):
     login_successful = pyqtSignal()
     
-    VALID_USERNAME = "root"
+    VALID_USERNAME = "Neutonians"
     VALID_PASSWORD = "1234"
 
     def __init__(self):
@@ -23,7 +23,7 @@ class LoginWindow(QMainWindow):
         self.setStyleSheet("""
             QMainWindow {
                 /* Modified with the absolute path, using forward slashes for compatibility */
-                background-image: url(C:/Users/User/Documents/GitHub/Newtonian-Telescope-Orientation/assets/bgimg.jpg);
+                background-color: #3f61b5;
                 background-position: center;
                 background-repeat: no-repeat;
                 background-size: cover; 
@@ -34,7 +34,6 @@ class LoginWindow(QMainWindow):
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
         main_layout = QHBoxLayout(central_widget)
 
         login_card = QFrame()
@@ -98,7 +97,7 @@ class LoginWindow(QMainWindow):
 
         card_layout.addWidget(QLabel("USERNAME:"))
         self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter Username (root)")
+        self.username_input.setPlaceholderText("Enter Username (Neutonians)")
         self.username_input.returnPressed.connect(self.attempt_login)
         card_layout.addWidget(self.username_input)
 
@@ -133,4 +132,7 @@ class LoginWindow(QMainWindow):
             self.login_successful.emit()
         else:
             self.status_label.setText("Error: Invalid username or password.")
-            self.password_input.clear() 
+            self.password_input.clear()
+            
+if __name__ == "__main__":
+    LoginWindow()
