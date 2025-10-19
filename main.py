@@ -304,9 +304,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = Newtonian_TelescopeApp()
     loging = LoginWindow()
-    # Support optional --fullscreen flag to open the main interface fullscreen after login
-    fullscreen_flag = "--fullscreen" in sys.argv
-    # Use a lambda that will either show the window normally or fullscreen depending on flag
+    fullscreen_flag = "fullscreen" in sys.argv
     loging.login_successful.connect(lambda f=fullscreen_flag: (window.showFullScreen() if f else window.show(), loging.close()))
     loging.show()
     #window.show()
