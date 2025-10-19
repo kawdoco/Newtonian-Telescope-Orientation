@@ -29,7 +29,7 @@ class LoginWindow(QMainWindow):
         self.setStyleSheet("""
             QMainWindow {
                 /* Modified with the absolute path, using forward slashes for compatibility */
-                background-image: url(C:/Users/User/Documents/GitHub/Newtonian-Telescope-Orientation/assets/bgimg.jpg);
+                background-image: url(assets/bgimg.jpg);
                 background-position: center;
                 background-repeat: no-repeat;
                 background-size: cover; 
