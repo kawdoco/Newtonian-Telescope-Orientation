@@ -1,11 +1,12 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
 import geocoder
+from loging import LoginWindow
 
 class MountSystem:
     def __init__(self, azimuth=0, elevation=5, length=5):
@@ -82,12 +83,20 @@ class Newtonian_TelescopeApp(QMainWindow):
             self.device_lat, self.device_lon = 0.0, 0.0
 
         self.mount = MountSystem()
+        self.anim_timer = QTimer()
+        self.anim_timer.timeout.connect(self.animate_step)
+        self.animating = False
+        self.steps = 30
+        
         self.show_axes_val = True
 
         self.fig = plt.figure()
         self.fig.patch.set_facecolor("#1c1c1c")  
 
         self.initUI()
+
+        self.apply_preset(1)
+        self.plot_telescope()
 
     def initUI(self):
         central_widget = QWidget()
@@ -124,8 +133,6 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.az_min = QSpinBox()
         self.az_min.setRange(0, 59)   
         self.az_min.setValue(0)
-        self.az_deg.valueChanged.connect(self.update_and_plot)
-        self.az_min.valueChanged.connect(self.update_and_plot)
 
         self.el_label = QLabel("Elevation:")
         self.el_deg = QSpinBox()
@@ -134,10 +141,8 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.el_min = QSpinBox()
         self.el_min.setRange(0, 59)
         self.el_min.setValue(0)
-        self.el_deg.valueChanged.connect(self.update_and_plot)
-        self.el_min.valueChanged.connect(self.update_and_plot)
 
-        self.plot_button = QPushButton("Plot")
+        self.plot_button = QPushButton("Simulate")
         self.plot_button.clicked.connect(self.plot_telescope)
 
         self.show_axes_checkbox = QCheckBox("Show Axes")
@@ -211,6 +216,24 @@ class Newtonian_TelescopeApp(QMainWindow):
             self.set_orientation(270, 0)
 
     def plot_telescope(self):
+        if self.animating:
+            return
+        
+        self.start_az = self.mount.azimuth
+        self.start_el = self.mount.elevation
+
+        self.target_az = self.az_deg.value() + self.az_min.value() / 60
+        self.target_el = self.el_deg.value() + self.el_min.value() / 60
+
+        self.current_step = 0
+        self.animating = True
+        self.anim_timer.start(20)
+
+        az = self.az_deg.value() + self.az_min.value()/60
+        el = self.el_deg.value() + self.el_min.value()/60
+        self.mount.azimuth = az
+        self.mount.elevation = el
+
         self.visualizer.clear()
         if self.show_axes_val:
             self.visualizer.draw_axes()
@@ -221,9 +244,49 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.visualizer.finalize_plot()
         self.canvas.draw()
 
+    def animate_step(self):
+        t = self.current_step / self.steps
+        t = t * t * (3-2*t)
+
+        az = self.start_az + (self.target_az - self.start_az) * t
+        el = self.start_el + (self.target_el - self.start_el) * t
+
+        self.mount.azimuth = az
+        self.mount.elevation = el
+
+        self.visualizer.clear()
+        if self.show_axes_val:
+            self.visualizer.draw_axes()
+        dx, dy, dz = self.mount.get_orientation_vector()
+        self.visualizer.draw_telescope(dx, dy, dz)
+        self.visualizer.draw_fov_cone(dx, dy, dz)
+        self.visualizer.finalize_plot()
+        self.canvas.draw()
+
+        self.current_step += 1
+        if self.current_step > self.steps:
+            self.anim_timer.stop()
+            self.animating = False
+
+            self.mount.azimuth = self.target_az
+            self.mount.elevation = self.target_el
+            self.plot_telescope_final()
+    
+    def plot_telescope_final(self):
+        self.visualizer.clear()
+        if self.show_axes_val:
+            self.visualizer.draw_axes()
+        dx, dy, dz = self.mount.get_orientation_vector()
+        self.visualizer.draw_telescope(dx, dy, dz)
+        self.visualizer.draw_fov_cone(dx, dy, dz)
+        self.visualizer.finalize_plot()
+        self.canvas.draw()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = Newtonian_TelescopeApp()
-    window.show()
+    loging = LoginWindow()
+    loging.login_successful.connect(lambda:(window.show(), loging.close()))
+    loging.show()
+    #window.show()
     sys.exit(app.exec_())
