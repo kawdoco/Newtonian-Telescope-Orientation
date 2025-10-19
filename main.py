@@ -2,7 +2,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox, QSizePolicy
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
 import geocoder
@@ -72,7 +72,12 @@ class Newtonian_TelescopeApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Newtonian Telescope Simulator")
-        self.setFixedSize(800, 800)
+        # start with a reasonable size but allow fullscreen toggle
+        self.resize(1000, 800)
+        self.setMinimumSize(800, 600)
+
+        # fullscreen state
+        self.fullscreen = False
 
         self.setStyleSheet("background-color: #1c1c1c; color: white;")
 
@@ -106,7 +111,9 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         self.fig = plt.figure()
         self.canvas = FigureCanvas(self.fig)
-        self.canvas.setFixedHeight(700)  
+        # allow the canvas to expand to fill available space (for fullscreen)
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.canvas.updateGeometry()
         layout.addWidget(self.canvas)
         self.visualizer = VisualizationSystem(self.fig)
 
@@ -244,6 +251,17 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.visualizer.finalize_plot()
         self.canvas.draw()
 
+    def toggle_fullscreen(self, value=None):
+        if value is None:
+            self.fullscreen = not self.fullscreen
+        else:
+            self.fullscreen = bool(value)
+
+        if self.fullscreen:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+
     def animate_step(self):
         t = self.current_step / self.steps
         t = t * t * (3-2*t)
@@ -286,7 +304,10 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = Newtonian_TelescopeApp()
     loging = LoginWindow()
-    loging.login_successful.connect(lambda:(window.show(), loging.close()))
+    # Support optional --fullscreen flag to open the main interface fullscreen after login
+    fullscreen_flag = "--fullscreen" in sys.argv
+    # Use a lambda that will either show the window normally or fullscreen depending on flag
+    loging.login_successful.connect(lambda f=fullscreen_flag: (window.showFullScreen() if f else window.show(), loging.close()))
     loging.show()
     #window.show()
     sys.exit(app.exec_())
