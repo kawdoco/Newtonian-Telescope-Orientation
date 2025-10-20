@@ -72,11 +72,9 @@ class Newtonian_TelescopeApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Newtonian Telescope Simulator")
-        # start with a reasonable size but allow fullscreen toggle
         self.resize(1000, 800)
         self.setMinimumSize(800, 600)
 
-        # fullscreen state
         self.fullscreen = False
 
         self.setStyleSheet("background-color: #1c1c1c; color: white;")
@@ -111,7 +109,6 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         self.fig = plt.figure()
         self.canvas = FigureCanvas(self.fig)
-        # allow the canvas to expand to fill available space (for fullscreen)
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.canvas.updateGeometry()
         layout.addWidget(self.canvas)
