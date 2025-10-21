@@ -30,6 +30,8 @@ o	Clarenza Victoria
 o	Nethmi Umaya
         
 o	Chethisha Pabod
+
+<img width = "600" height = "550" alt = "python simulator" src = "Image\loging.png" />
 		
 •	3D Design: -
         
