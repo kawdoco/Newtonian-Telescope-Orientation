@@ -6,7 +6,7 @@ This project is focused on designing and building a motorized moving system for 
  		calculated celestial coordinates.
 	🎛️ Motor Control with 3D Telescope – Stepper/servo motors for 
  		accurate positioning and smooth movement.
-	💻 Software Integration – Control via 3D Animations (e.g.,Python/ Node JS) 
+	💻 Software Integration – Control via 3D Animations (e.g.,Python) 
  		with user-friendly commands.
 	🌌 Astronomy Focused – Optimized for Newtonian reflector telescopes, 
  		balancing portability, accuracy, and ease of use.
