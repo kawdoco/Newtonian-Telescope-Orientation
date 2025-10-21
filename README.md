@@ -11,7 +11,7 @@ This project is focused on designing and building a motorized moving system for 
 	🌌 Astronomy Focused – Optimized for Newtonian reflector telescopes, 
  		balancing portability, accuracy, and ease of use.
 
-<img width="35" height="35" alt="management" src="https://github.com/user-attachments/assets/487810ab-b9ec-475f-a6c8-3fc4f9c74816" />Team 
+# <img width="35" height="35" alt="management" src="https://github.com/user-attachments/assets/487810ab-b9ec-475f-a6c8-3fc4f9c74816" />Team 
 
 •	Back-End Developer: -
 
