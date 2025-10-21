@@ -16,7 +16,7 @@ This project is focused on designing and building a motorized moving system for 
         o	Thisara Anusara
         o	Kevin Hirosh
         o	Kithmi Arambage
-<img width = "700" height = "650" alt = "python simulator" src = "Image\simulator.png" />
+<img width = "600" height = "550" alt = "python simulator" src = "Image\simulator.png" />
     •	Front-End Developer: -
         o	Clarenza Victoria
         o	Nethmi Umaya
