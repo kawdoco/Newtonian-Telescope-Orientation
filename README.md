@@ -23,4 +23,4 @@ This project is focused on designing and building a motorized moving system for 
     •	3D Design: -
         o 	Kevin Hirosh
         o 	Thisara Anusara
-## <img width ="800" height = "780" alt = "blender" src = "Image\blender1.png" /> Blender Telescope
+## <img width ="800" height = "780" alt = "blender" src = "Image\blender1.png" />
