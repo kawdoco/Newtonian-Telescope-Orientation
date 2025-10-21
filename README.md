@@ -11,18 +11,31 @@ This project is focused on designing and building a motorized moving system for 
 	🌌 Astronomy Focused – Optimized for Newtonian reflector telescopes, 
  		balancing portability, accuracy, and ease of use.
 
-## <img width="35" height="35" alt="management" src="https://github.com/user-attachments/assets/487810ab-b9ec-475f-a6c8-3fc4f9c74816" />Team 
-    •	Back-End Developer: -
-        o	Thisara Anusara
-        o	Kevin Hirosh
-        o	Kithmi Arambage
+<img width="35" height="35" alt="management" src="https://github.com/user-attachments/assets/487810ab-b9ec-475f-a6c8-3fc4f9c74816" />Team 
+
+•	Back-End Developer: -
+
+o	Thisara Anusara
+
+o	Kevin Hirosh
+
+o	Kithmi Arambage
+		
 <img width = "600" height = "550" alt = "python simulator" src = "Image\simulator.png" />
-    •	Front-End Developer: -
-        o	Clarenza Victoria
-        o	Nethmi Umaya
-        o	Chethisha Pabod
-    •	3D Design: -
-        o 	Kevin Hirosh
-        o 	Thisara Anusara
+	
+•	Front-End Developer: -
+        
+o	Clarenza Victoria
+        
+o	Nethmi Umaya
+        
+o	Chethisha Pabod
+		
+•	3D Design: -
+        
+o 	Kevin Hirosh
+        
+o 	Thisara Anusara
+
 <img width ="800" height = "780" alt = "blender" src = "Image\blender1.png" />
 
