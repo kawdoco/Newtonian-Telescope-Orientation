@@ -6,15 +6,10 @@ from PyQt5.QtWidgets import (
 
 class LoginWindow(QMainWindow):
     login_successful = pyqtSignal()
-<<<<<<< HEAD
+
     
     VALID_USERNAME = "telescope"
     VALID_PASSWORD = "6789"
-=======
-
-    VALID_USERNAME = "root"
-    VALID_PASSWORD = "1234"
->>>>>>> 0459a34cc1ce432c1f470f4ee365930579307bcf
 
     def __init__(self):
         super().__init__()
