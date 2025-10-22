@@ -7,8 +7,8 @@ from PyQt5.QtWidgets import (
 class LoginWindow(QMainWindow):
     login_successful = pyqtSignal()
 
-    VALID_USERNAME = "root"
-    VALID_PASSWORD = "1234"
+    VALID_USERNAME = "telescope"
+    VALID_PASSWORD = "6789"
 
     def __init__(self):
         super().__init__()
@@ -168,13 +168,13 @@ class LoginWindow(QMainWindow):
 
         card_layout.addWidget(QLabel("USERNAME:"))
         self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter Username (root)")
+        self.username_input.setPlaceholderText("Enter Username")
         self.username_input.returnPressed.connect(self.attempt_login)
         card_layout.addWidget(self.username_input)
 
         card_layout.addWidget(QLabel("PASSWORD:"))
         self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Enter Password (1234)")
+        self.password_input.setPlaceholderText("Enter Password")
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.returnPressed.connect(self.attempt_login)
         card_layout.addWidget(self.password_input)
