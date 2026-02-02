@@ -1,12 +1,78 @@
 import sys
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox, QSizePolicy
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
 import geocoder
 from loging import LoginWindow
+
+
+class StarryBackgroundWidget(QWidget):
+    def __init__(self, parent=None, seed=1337):
+        super().__init__(parent)
+        self._seed = seed
+        self._stars = []
+        self._regen_stars()
+
+    def _regen_stars(self):
+        rng = random.Random(self._seed)
+        w = max(1, self.width())
+        h = max(1, self.height())
+
+        # Density tuned for a subtle background; increase for more stars.
+        count = max(120, int((w * h) / 4500))
+
+        stars = []
+        for _ in range(count):
+            x = rng.random()
+            y = rng.random()
+
+            # Mostly tiny stars, with a few slightly larger ones.
+            r = 1 if rng.random() < 0.92 else 2
+
+            # Subtle color variation (mostly white, some blue-ish and warm-ish).
+            tint = rng.random()
+            if tint < 0.78:
+                base = (255, 255, 255)
+            elif tint < 0.90:
+                base = (190, 210, 255)
+            else:
+                base = (255, 225, 190)
+
+            alpha = rng.randint(90, 220)
+            stars.append((x, y, r, base[0], base[1], base[2], alpha))
+
+        self._stars = stars
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._regen_stars()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        # Deep black sky.
+        painter.fillRect(self.rect(), QColor(0, 0, 0))
+
+        # Stars.
+        w = max(1, self.width())
+        h = max(1, self.height())
+        for sx, sy, r, cr, cg, cb, a in self._stars:
+            x = int(sx * (w - 1))
+            y = int(sy * (h - 1))
+            painter.setPen(QColor(cr, cg, cb, a))
+            if r == 1:
+                painter.drawPoint(x, y)
+            else:
+                painter.drawEllipse(x - 1, y - 1, 2, 2)
+
+        painter.end()
 
 class MountSystem:
     def __init__(self, azimuth=0, elevation=5, length=5):
@@ -61,11 +127,18 @@ class VisualizationSystem:
         self.ax.set_xlim(-6, 6)
         self.ax.set_ylim(-6, 6)
         self.ax.set_zlim(0, 6)
-        self.ax.set_title("Newtonian Telescope Orientation")
-        self.ax.set_xlabel("X (East)")
-        self.ax.set_ylabel("Y (North)")
-        self.ax.set_zlabel("Z (Up)")
-        self.ax.legend()
+        self.ax.set_title("Newtonian Telescope Orientation", color="white")
+        self.ax.set_xlabel("X (East)", color="white")
+        self.ax.set_ylabel("Y (North)", color="white")
+        self.ax.set_zlabel("Z (Up)", color="white")
+        self.ax.tick_params(colors="white")
+
+        leg = self.ax.legend()
+        if leg is not None:
+            leg.get_frame().set_facecolor((0, 0, 0, 0.35))
+            leg.get_frame().set_edgecolor((1, 1, 1, 0.25))
+            for text in leg.get_texts():
+                text.set_color("white")
 
 
 class Newtonian_TelescopeApp(QMainWindow):
@@ -76,8 +149,6 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.setMinimumSize(800, 600)
 
         self.fullscreen = False
-
-        self.setStyleSheet("background-color: #1c1c1c; color: white;")
 
         g = geocoder.ip('me')
         if g.ok:
@@ -93,16 +164,68 @@ class Newtonian_TelescopeApp(QMainWindow):
         
         self.show_axes_val = True
 
-        self.fig = plt.figure()
-        self.fig.patch.set_facecolor("#1c1c1c")  
-
         self.initUI()
+
+        self.apply_colorful_theme()
 
         self.apply_preset(1)
         self.plot_telescope()
 
+    def apply_colorful_theme(self):
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #000000;
+            }
+
+            QWidget#centralWidget {
+                background: transparent;
+            }
+
+            QLabel, QCheckBox {
+                color: white;
+            }
+
+            QPushButton {
+                background-color: rgba(0, 0, 0, 140);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 55);
+                padding: 6px 12px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 45);
+            }
+
+            QSpinBox, QComboBox {
+                background-color: rgba(0, 0, 0, 160);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 55);
+                padding: 4px 8px;
+                border-radius: 6px;
+            }
+            """
+        )
+
+        # Let the window gradient show behind the Matplotlib canvas.
+        if hasattr(self, "canvas"):
+            self.canvas.setStyleSheet("background: transparent;")
+
+        if hasattr(self, "fig"):
+            self.fig.patch.set_alpha(0.0)
+
+        if hasattr(self, "visualizer") and hasattr(self.visualizer, "ax"):
+            ax = self.visualizer.ax
+            ax.set_facecolor((0, 0, 0, 0))
+            pane_color = (0, 0, 0, 0)
+            ax.xaxis.set_pane_color(pane_color)
+            ax.yaxis.set_pane_color(pane_color)
+            ax.zaxis.set_pane_color(pane_color)
+            ax.grid(color=(1, 1, 1, 0.15))
+
     def initUI(self):
-        central_widget = QWidget()
+        central_widget = StarryBackgroundWidget()
+        central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout()
         central_widget.setLayout(layout)

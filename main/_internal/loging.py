@@ -19,20 +19,14 @@ class LoginWindow(QMainWindow):
     def initUI(self):
         self.setStyleSheet("""
             QMainWindow {
-                background-image: url(Image/image.jpg);
-                background-position: center;
-                background-repeat: no-repeat;
-                background-size: cover;
+                border-image: url(Image/image.jpg) 0 0 0 0 stretch stretch;
             }
         """)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         central_widget.setStyleSheet("""
-            background-position: center;
-            background-repeat: no-repeat;
-            background-size: cover;
-            background-attachment: fixed;
+            background: transparent;
         """)
 
         main_layout = QVBoxLayout()
