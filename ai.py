@@ -9,8 +9,8 @@ try:
 except ImportError:
     SKYFIELD_AVAILABLE = False
 
-api_key = os.environ.get("OPENAI_API_KEY", "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")
-client = OpenAI(api_key=api_key) if api_key != "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" else None
+api_key = os.environ.get("OPENAI_API_KEY", "OPEN_API_KEY")
+client = OpenAI(api_key=api_key) if api_key != "OPEN_API_KEY" else None
 
 
 def ask_ai(question):
