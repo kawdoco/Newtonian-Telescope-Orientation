@@ -9,6 +9,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
 import geocoder
 from loging import LoginWindow
+from ai import *
 
 
 class StarryBackgroundWidget(QWidget):
@@ -289,6 +290,10 @@ class Newtonian_TelescopeApp(QMainWindow):
         ])
         self.preset_combo.currentIndexChanged.connect(self.apply_preset)
 
+        self.voice_button = QPushButton("Voice")
+        self.voice_button.clicked.connect(self.voice_control)
+        self.voice_button.setToolTip("Click and speak: 'Polaris', 'Zenith', 'Azimuth 90', etc.")
+
         controls.addWidget(self.az_label)
         controls.addWidget(self.az_deg)
         controls.addWidget(QLabel("°"))
@@ -306,6 +311,7 @@ class Newtonian_TelescopeApp(QMainWindow):
         
         controls.addWidget(self.preset_label)
         controls.addWidget(self.preset_combo)
+        controls.addWidget(self.voice_button)
 
         layout.addLayout(controls)
 
@@ -341,6 +347,34 @@ class Newtonian_TelescopeApp(QMainWindow):
             self.set_orientation(180, 0)
         elif index == 6: # Horizon West
             self.set_orientation(270, 0)
+
+    def voice_control(self):
+        """Handle voice commands for telescope control including celestial objects"""
+        self.voice_button.setText("Listening...")
+        self.voice_button.setEnabled(False)
+        QApplication.processEvents()
+        
+        command = takeCommand()
+        
+        if command != "None":
+            cmd_type, az, el = parse_telescope_command(command, self.device_lat, self.device_lon)
+            
+            if cmd_type in ["preset", "celestial"] and az is not None and el is not None:
+                self.set_orientation(az, el)
+                self.plot_telescope()
+                if cmd_type == "celestial":
+                    print(f"Pointing to celestial object at Az={az:.2f}°, El={el:.2f}°")
+            elif cmd_type == "manual":
+                if az is not None:
+                    self.az_deg.setValue(int(az))
+                if el is not None:
+                    self.el_deg.setValue(int(el))
+                self.plot_telescope()
+            else:
+                print(f"Could not interpret command: {command}")
+        
+        self.voice_button.setText("Voice")
+        self.voice_button.setEnabled(True)
 
     def plot_telescope(self):
         if self.animating:
@@ -429,3 +463,9 @@ if __name__ == "__main__":
     loging.show()
     #window.show()
     sys.exit(app.exec_())
+
+    self.voice_button = QPushButton("Voice Control")
+    self.voice_button.clicked.connect(self.voice_control)
+    self.voice_button.setToolTip("Click and speak a command")
+
+    controls.addWidget(self.voice_button)
