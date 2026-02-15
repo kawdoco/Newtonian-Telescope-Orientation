@@ -9,10 +9,8 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHB
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.spatial.transform import Rotation as R
 import geocoder
-
-# Load environment variables
+from dotenv import load_dotenv
 try:
-    from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     print("Note: python-dotenv not installed. Set OPENAI_API_KEY environment variable manually.")
