@@ -1,4 +1,14 @@
 .env
+.env.local
 key.env
+*.pem
+*.key
 __pycache__/
 *.pyc
+build/
+dist/
+*.egg-info/
+venv/
+.vscode/
+.idea/
+*.blend1
