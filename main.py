@@ -31,7 +31,6 @@ class StarryBackgroundWidget(QWidget):
         w = max(1, self.width())
         h = max(1, self.height())
 
-        # Density tuned for a subtle background; increase for more stars.
         count = max(120, int((w * h) / 4500))
 
         stars = []
@@ -39,10 +38,8 @@ class StarryBackgroundWidget(QWidget):
             x = rng.random()
             y = rng.random()
 
-            # Mostly tiny stars, with a few slightly larger ones.
             r = 1 if rng.random() < 0.92 else 2
 
-            # Subtle color variation (mostly white, some blue-ish and warm-ish).
             tint = rng.random()
             if tint < 0.78:
                 base = (255, 255, 255)
