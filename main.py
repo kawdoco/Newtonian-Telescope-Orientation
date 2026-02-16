@@ -361,21 +361,29 @@ class Newtonian_TelescopeApp(QMainWindow):
         command = takeCommand()
         
         if command != "None":
-            cmd_type, az, el = parse_telescope_command(command, self.device_lat, self.device_lon)
+            result = parse_telescope_command(command, self.device_lat, self.device_lon)
+            
+            if len(result) == 4:
+                cmd_type, az, el, obj_name = result
+            else:
+                cmd_type, az, el = result[:3]
+                obj_name = None
             
             if cmd_type in ["preset", "celestial"] and az is not None and el is not None:
                 self.set_orientation(az, el)
                 self.plot_telescope()
-                if cmd_type == "celestial":
-                    print(f"Pointing to celestial object at Az={az:.2f}°, El={el:.2f}°")
+                if cmd_type == "celestial" and obj_name:
+                    print(f"Pointing to {obj_name} at Az={az:.2f}°, El={el:.2f}°")
             elif cmd_type == "manual":
                 if az is not None:
                     self.az_deg.setValue(int(az))
                 if el is not None:
                     self.el_deg.setValue(int(el))
                 self.plot_telescope()
+                speech(f"Telescope positioned at azimuth {az} degrees, elevation {el} degrees")
             else:
                 print(f"Could not interpret command: {command}")
+                speech(f"Could not interpret command. Please try again.")
         
         self.voice_button.setText("Voice")
         self.voice_button.setEnabled(True)
