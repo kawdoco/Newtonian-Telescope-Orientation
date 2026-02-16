@@ -84,7 +84,7 @@ def get_celestial_coordinates(object_name, latitude, longitude):
         
         if elevation < 0:
             print(f"Warning: {object_name.title()} is below horizon")
-            return None
+            print(f"Rotating telescope to position - will be visible when it rises")
         
         return (azimuth, elevation)
         
