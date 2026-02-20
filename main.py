@@ -552,13 +552,13 @@ class Newtonian_TelescopeApp(QMainWindow):
         controls.addWidget(self.az_deg)
         controls.addWidget(QLabel("°"))
         controls.addWidget(self.az_min)
-        controls.addWidget(QLabel("′"))
+        controls.addWidget(QLabel("'"))
 
         controls.addWidget(self.el_label)
         controls.addWidget(self.el_deg)
         controls.addWidget(QLabel("°"))
         controls.addWidget(self.el_min)
-        controls.addWidget(QLabel("′"))
+        controls.addWidget(QLabel("'"))
 
         controls.addWidget(self.plot_button)
         controls.addWidget(self.show_axes_checkbox)
