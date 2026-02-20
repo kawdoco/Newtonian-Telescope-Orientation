@@ -1,4 +1,5 @@
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QFrame
@@ -227,7 +228,6 @@ class LoginWindow(QMainWindow):
 if __name__ == "__main__":
     from PyQt5.QtWidgets import QApplication
     import sys
-
     app = QApplication(sys.argv)
     window = LoginWindow()
     window.show()

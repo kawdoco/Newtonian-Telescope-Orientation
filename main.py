@@ -7,6 +7,7 @@ import urllib.request
 import urllib.error
 import numpy as np
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox, QSizePolicy
 from PyQt5.QtWidgets import QOpenGLWidget
@@ -710,6 +711,9 @@ class Newtonian_TelescopeApp(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = Newtonian_TelescopeApp()
+    icon_path = os.path.join(os.path.dirname(__file__), 'Image', 'telescope.ico')
+    if os.path.exists(icon_path):
+        window.setWindowIcon(QIcon(icon_path))
     loging = LoginWindow()
     fullscreen_flag = "fullscreen" in sys.argv
     loging.login_successful.connect(lambda f=fullscreen_flag: (window.showFullScreen() if f else window.show(), loging.close()))
