@@ -14,6 +14,14 @@ _speech_lock = threading.Lock()
 ASSISTANT_NAME = "skysy"
 WAKE_WORD_REQUIRED = True
 
+CONTROL_KEYWORDS = {
+    "moon", "sun", "mars", "jupiter", "saturn", "venus", "mercury", "uranus", "neptune",
+    "polaris", "north star", "zenith", "straight up",
+    "horizon north", "horizon east", "horizon south", "horizon west",
+    "show point", "hide point", "show marker", "hide marker",
+    "turn on point", "turn off point", "enable point", "disable point", "remove point",
+}
+
 def _init_engine():
     global _engine
     try:
@@ -58,16 +66,29 @@ def _strip_wake_word(command: str) -> tuple[bool, str]:
     return False, command
 
 
+def _looks_like_telescope_command(command: str) -> bool:
+    text = command.lower().strip()
+    if not text:
+        return False
+
+    if any(keyword in text for keyword in CONTROL_KEYWORDS):
+        return True
+
+    if re.search(r"\bazimuth\s+\d+", text) or re.search(r"\belevation\s+\d+", text):
+        return True
+
+    return False
+
+
 try:
     
     SKYFIELD_AVAILABLE = True
 except ImportError:
     SKYFIELD_AVAILABLE = False
 
-api_key = os.environ.get("OPEN_API_KEY", "OPEN_API_KEY")
-client = OpenAI(api_key=api_key) if api_key != "OPEN_API_KEY" else None
+api_key = os.environ.get("OPENAI_API_KEY", "OPENAI_API_KEY")
+client = OpenAI(api_key=api_key) if api_key != "OPENAI_API_KEY" else None
 
-# Check if AI is available
 if client:
     print("✓ OpenAI connection established - AI agent available")
 else:
@@ -79,7 +100,6 @@ def ask_ai(question):
         print("AI agent not available (no API key)")
         return None
     
-    #print(f"Consulting AI agent to interpret: '{question}'")
     speech("Consulting AI assistant")
     
     try:
@@ -96,7 +116,6 @@ def ask_ai(question):
         print(f"AI agent identified: '{result}'")
         return result
     except Exception as e:
-        #print(f"❌ AI Error: {str(e)}")
         speech("AI assistant unavailable")
         return None
 
@@ -107,7 +126,7 @@ def get_celestial_coordinates(object_name, latitude, longitude):
     
     try:
         ts = load.timescale()
-        eph = load('de421.bsp')  # Planetary ephemeris
+        eph = load('de421.bsp') 
         
         t = ts.now()
         
@@ -179,8 +198,11 @@ def takeCommand():
 
         woke, cleaned = _strip_wake_word(query)
         if WAKE_WORD_REQUIRED and not woke:
-            speech(f"Say {ASSISTANT_NAME} to wake me up")
-            return "None"
+            if _looks_like_telescope_command(query):
+                cleaned = query.strip()
+            else:
+                speech(f"Say {ASSISTANT_NAME} to wake me up")
+                return "None"
 
         if woke and not cleaned:
             speech("Yes?")
@@ -209,6 +231,11 @@ def takeCommand():
 
 def parse_telescope_command(command, latitude=0.0, longitude=0.0):
     command = command.lower()
+    
+    if any(phrase in command for phrase in ["hide point", "hide marker", "turn off point", "disable point", "remove point"]):
+        return ("toggle_point", False, None, None)
+    if any(phrase in command for phrase in ["show point", "show marker", "turn on point", "enable point", "display point"]):
+        return ("toggle_point", True, None, None)
     
     # Preset commands
     presets = {

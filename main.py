@@ -118,9 +118,12 @@ class SkyCatalog:
         os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
         if not os.path.exists(self.cache_path):
             try:
+                print(f"Downloading star catalog from {self.url}...")
                 urllib.request.urlretrieve(self.url, self.cache_path)
+                print("Star catalog downloaded successfully")
             except (urllib.error.URLError, urllib.error.HTTPError) as exc:
                 print(f"Catalog download failed: {exc}")
+                print("Application will continue without star catalog")
                 return
 
         try:
@@ -362,11 +365,12 @@ class OpenGLTelescopeWidget(QOpenGLWidget):
         glVertex3f(dx, dy, dz)
         glEnd()
 
-        glPointSize(10.0)
-        glColor4f(1.0, 0.3, 0.2, 1.0) 
-        glBegin(GL_POINTS)
-        glVertex3f(dx, dy, dz)
-        glEnd()
+        if self.show_point:
+            glPointSize(10.0)
+            glColor4f(1.0, 0.3, 0.2, 1.0) 
+            glBegin(GL_POINTS)
+            glVertex3f(dx, dy, dz)
+            glEnd()
 
     def _draw_fov_cone(self, dx, dy, dz):
         direction = np.array([dx, dy, dz], dtype=float)
@@ -414,8 +418,8 @@ class Newtonian_TelescopeApp(QMainWindow):
         else:
             self.device_lat, self.device_lon = 0.0, 0.0
 
-        catalog_url = "https://raw.githubusercontent.com/astronexus/HYG-Database/master/hygdata_v3.csv"
-        catalog_path = os.path.join(os.path.dirname(__file__), "data", "hygdata_v3.csv")
+        catalog_url = "https://raw.githubusercontent.com/astronexus/HYG-Database/master/hyg/v3/hyg_v37.csv"
+        catalog_path = os.path.join(os.path.dirname(__file__), "data", "hyg_v37.csv")
         self.catalog = SkyCatalog(catalog_url, catalog_path, max_stars=5000)
 
         self.mount = MountSystem()
@@ -423,8 +427,15 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.anim_timer.timeout.connect(self.animate_step)
         self.animating = False
         self.steps = 30
+
+        self.command_file = os.path.join(os.path.dirname(__file__), "p.txt")
+        self.last_external_command = ""
+        self.command_poll_timer = QTimer(self)
+        self.command_poll_timer.timeout.connect(self.poll_external_command)
+        self.command_poll_timer.start(800)
         
         self.show_axes_val = True
+        self.show_point_val = True
 
         self.initUI()
 
@@ -532,6 +543,10 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.show_axes_checkbox.setChecked(True)
         self.show_axes_checkbox.stateChanged.connect(self.toggle_axes)
 
+        self.show_point_checkbox = QCheckBox("Show Point")
+        self.show_point_checkbox.setChecked(True)
+        self.show_point_checkbox.stateChanged.connect(self.toggle_point)
+
         self.preset_label = QLabel("Presets:")
         self.preset_combo = QComboBox()
         self.preset_combo.addItems([
@@ -563,6 +578,7 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         controls.addWidget(self.plot_button)
         controls.addWidget(self.show_axes_checkbox)
+        controls.addWidget(self.show_point_checkbox)
         
         controls.addWidget(self.preset_label)
         controls.addWidget(self.preset_combo)
@@ -585,6 +601,12 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.show_axes_val = bool(state)
         if hasattr(self, "gl_view"):
             self.gl_view.show_axes = self.show_axes_val
+            self.gl_view.update()
+
+    def toggle_point(self, state):
+        self.show_point_val = bool(state)
+        if hasattr(self, "gl_view"):
+            self.gl_view.show_point = self.show_point_val
             self.gl_view.update()
         self.plot_telescope()
 
@@ -617,34 +639,79 @@ class Newtonian_TelescopeApp(QMainWindow):
         QApplication.processEvents()
         
         command = takeCommand()
-        
         if command != "None":
-            result = parse_telescope_command(command, self.device_lat, self.device_lon)
-            
-            if len(result) == 4:
-                cmd_type, az, el, obj_name = result
-            else:
-                cmd_type, az, el = result[:3]
-                obj_name = None
-            
-            if cmd_type in ["preset", "celestial"] and az is not None and el is not None:
-                self.set_orientation(az, el)
-                self.plot_telescope()
-                if cmd_type == "celestial" and obj_name:
-                    print(f"Pointing to {obj_name} at Az={az:.2f}°, El={el:.2f}°")
-            elif cmd_type == "manual":
-                if az is not None:
-                    self.az_deg.setValue(int(az))
-                if el is not None:
-                    self.el_deg.setValue(int(el))
-                self.plot_telescope()
-                speech(f"Telescope positioned at azimuth {az} degrees, elevation {el} degrees")
-            else:
-                print(f"Could not interpret command: {command}")
-                speech(f"Could not interpret command. Please try again.")
+            self.execute_text_command(command)
         
         self.voice_button.setText("Voice")
         self.voice_button.setEnabled(True)
+
+    def execute_text_command(self, command):
+        """Execute a natural language command and apply telescope updates."""
+        result = parse_telescope_command(command, self.device_lat, self.device_lon)
+
+        if len(result) == 4:
+            cmd_type, az, el, obj_name = result
+        else:
+            cmd_type, az, el = result[:3]
+            obj_name = None
+
+        if cmd_type == "toggle_point":
+            # az carries the requested point visibility for toggle commands.
+            show_point = az
+            self.show_point_checkbox.setChecked(show_point)
+            if show_point:
+                speech("Point marker enabled")
+            else:
+                speech("Point marker disabled")
+            return True
+
+        if cmd_type in ["preset", "celestial"] and az is not None and el is not None:
+            self.set_orientation(az, el)
+            self.plot_telescope()
+            if cmd_type == "celestial" and obj_name:
+                print(f"Pointing to {obj_name} at Az={az:.2f}°, El={el:.2f}°")
+            return True
+
+        if cmd_type == "manual":
+            if az is not None:
+                self.az_deg.setValue(int(az))
+            if el is not None:
+                self.el_deg.setValue(int(el))
+            self.plot_telescope()
+            speech(f"Telescope positioned at azimuth {az} degrees, elevation {el} degrees")
+            return True
+
+        print(f"Could not interpret command: {command}")
+        speech("Could not interpret command. Please try again.")
+        return False
+
+    def poll_external_command(self):
+        """Read commands from p.txt so external tools (like Jupyter) can drive the UI."""
+        if not os.path.exists(self.command_file):
+            return
+
+        try:
+            with open(self.command_file, "r", encoding="utf-8") as handle:
+                raw_command = handle.read().strip()
+        except OSError:
+            return
+
+        if not raw_command:
+            return
+
+        if raw_command == self.last_external_command:
+            return
+
+        self.last_external_command = raw_command
+        print(f"External command received: {raw_command}")
+        self.execute_text_command(raw_command)
+
+        # Clear file after processing so a repeated command can be sent again.
+        try:
+            with open(self.command_file, "w", encoding="utf-8") as handle:
+                handle.write("")
+        except OSError:
+            pass
 
     def plot_telescope(self):
         if self.animating:
@@ -667,6 +734,7 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         if hasattr(self, "gl_view"):
             self.gl_view.show_axes = self.show_axes_val
+            self.gl_view.show_point = self.show_point_val
             self.gl_view.update()
 
     def toggle_fullscreen(self, value=None):
@@ -692,6 +760,7 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         if hasattr(self, "gl_view"):
             self.gl_view.show_axes = self.show_axes_val
+            self.gl_view.show_point = self.show_point_val
             self.gl_view.update()
 
         self.current_step += 1
@@ -706,6 +775,7 @@ class Newtonian_TelescopeApp(QMainWindow):
     def plot_telescope_final(self):
         if hasattr(self, "gl_view"):
             self.gl_view.show_axes = self.show_axes_val
+            self.gl_view.show_point = self.show_point_val
             self.gl_view.update()
 
 if __name__ == "__main__":
