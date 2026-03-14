@@ -11,7 +11,7 @@ import threading
 _engine = None
 _speech_lock = threading.Lock()
 
-ASSISTANT_NAME = "skysy"
+ASSISTANT_NAME = "Orion"
 WAKE_WORD_REQUIRED = True
 
 CONTROL_KEYWORDS = {
