@@ -1,10 +1,12 @@
 import sys
 import os
 import csv
+import gzip
 import math
 import random
 import urllib.request
 import urllib.error
+import threading
 import numpy as np
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon
@@ -106,10 +108,11 @@ class MountSystem:
 
 
 class SkyCatalog:
-    def __init__(self, url, cache_path, max_stars=5000):
+    def __init__(self, url, cache_path, max_stars=5000, allow_download=True):
         self.url = url
         self.cache_path = cache_path
         self.max_stars = max_stars
+        self.allow_download = allow_download
         self.stars = []
         self.ready = False
         self.load()
@@ -117,6 +120,8 @@ class SkyCatalog:
     def load(self):
         os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
         if not os.path.exists(self.cache_path):
+            if not self.allow_download:
+                return
             try:
                 print(f"Downloading star catalog from {self.url}...")
                 urllib.request.urlretrieve(self.url, self.cache_path)
@@ -127,7 +132,8 @@ class SkyCatalog:
                 return
 
         try:
-            with open(self.cache_path, "r", encoding="utf-8") as handle:
+            open_fn = gzip.open if self.cache_path.endswith(".gz") else open
+            with open_fn(self.cache_path, "rt", encoding="utf-8") as handle:
                 reader = csv.DictReader(handle)
                 stars = []
                 for row in reader:
@@ -411,22 +417,20 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.setMinimumSize(800, 600)
 
         self.fullscreen = False
+        self.device_lat, self.device_lon = 0.0, 0.0
 
-        g = geocoder.ip('me')
-        if g.ok:
-            self.device_lat, self.device_lon = g.latlng
-        else:
-            self.device_lat, self.device_lon = 0.0, 0.0
-
-        catalog_url = "https://raw.githubusercontent.com/astronexus/HYG-Database/master/hyg/v3/hyg_v37.csv"
-        catalog_path = os.path.join(os.path.dirname(__file__), "data", "hyg_v37.csv")
-        self.catalog = SkyCatalog(catalog_url, catalog_path, max_stars=5000)
+        catalog_url = "https://codeberg.org/astronexus/hyg/raw/branch/main/data/hyg/CURRENT/hyg_v42.csv.gz"
+        catalog_path = os.path.join(os.path.dirname(__file__), "data", "hyg_v42.csv.gz")
+        self.catalog = SkyCatalog(catalog_url, catalog_path, max_stars=5000, allow_download=False)
+        self.catalog_url = catalog_url
+        self.catalog_path = catalog_path
 
         self.mount = MountSystem()
         self.anim_timer = QTimer()
         self.anim_timer.timeout.connect(self.animate_step)
         self.animating = False
         self.steps = 30
+        self.anim_epsilon = 1e-3
 
         self.command_file = os.path.join(os.path.dirname(__file__), "p.txt")
         self.last_external_command = ""
@@ -445,6 +449,39 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         self.apply_preset(1)
         self.plot_telescope()
+
+        QTimer.singleShot(0, self.initialize_runtime_data)
+
+    def initialize_runtime_data(self):
+        self._refresh_location()
+        if not self.catalog.ready:
+            threading.Thread(target=self._download_catalog_in_background, daemon=True).start()
+
+    def _refresh_location(self):
+        try:
+            g = geocoder.ip('me', timeout=2.0)
+            if g.ok and g.latlng and len(g.latlng) == 2:
+                self.device_lat, self.device_lon = g.latlng
+        except Exception as exc:
+            print(f"Geolocation lookup failed: {exc}")
+
+        if hasattr(self, "location_label"):
+            self.location_label.setText(
+                f"Device Location: Lat {self.device_lat:.6f}°, Lon {self.device_lon:.6f}°"
+            )
+
+        if hasattr(self, "sky_map"):
+            self.sky_map.set_location(self.device_lat, self.device_lon)
+
+    def _download_catalog_in_background(self):
+        bg_catalog = SkyCatalog(self.catalog_url, self.catalog_path, max_stars=5000, allow_download=True)
+        if not bg_catalog.ready:
+            return
+
+        self.catalog.stars = bg_catalog.stars
+        self.catalog.ready = True
+        
+        QTimer.singleShot(0, self.sky_map.refresh_scene)
 
     def apply_colorful_theme(self):
         self.setStyleSheet(
@@ -706,7 +743,6 @@ class Newtonian_TelescopeApp(QMainWindow):
         print(f"External command received: {raw_command}")
         self.execute_text_command(raw_command)
 
-        # Clear file after processing so a repeated command can be sent again.
         try:
             with open(self.command_file, "w", encoding="utf-8") as handle:
                 handle.write("")
@@ -714,23 +750,30 @@ class Newtonian_TelescopeApp(QMainWindow):
             pass
 
     def plot_telescope(self):
-        if self.animating:
+        target_az = self.az_deg.value() + self.az_min.value() / 60
+        target_el = self.el_deg.value() + self.el_min.value() / 60
+
+        if (
+            abs(self.mount.azimuth - target_az) <= self.anim_epsilon
+            and abs(self.mount.elevation - target_el) <= self.anim_epsilon
+        ):
+            self.mount.azimuth = target_az
+            self.mount.elevation = target_el
+            self.plot_telescope_final()
             return
-        
+
+        if self.animating:
+            self.anim_timer.stop()
+            self.animating = False
+
         self.start_az = self.mount.azimuth
         self.start_el = self.mount.elevation
-
-        self.target_az = self.az_deg.value() + self.az_min.value() / 60
-        self.target_el = self.el_deg.value() + self.el_min.value() / 60
+        self.target_az = target_az
+        self.target_el = target_el
 
         self.current_step = 0
         self.animating = True
         self.anim_timer.start(20)
-
-        az = self.az_deg.value() + self.az_min.value()/60
-        el = self.el_deg.value() + self.el_min.value()/60
-        self.mount.azimuth = az
-        self.mount.elevation = el
 
         if hasattr(self, "gl_view"):
             self.gl_view.show_axes = self.show_axes_val

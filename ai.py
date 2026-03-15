@@ -35,8 +35,6 @@ def _init_engine():
         print(f"Speech engine initialization error: {e}")
         _engine = None
 
-_init_engine()
-
 
 def speech(audio: str) -> None:
     def _speak():
@@ -90,9 +88,9 @@ api_key = os.environ.get("OPENAI_API_KEY", "OPENAI_API_KEY")
 client = OpenAI(api_key=api_key) if api_key != "OPENAI_API_KEY" else None
 
 if client:
-    print("✓ OpenAI connection established - AI agent available")
+    print("OpenAI connection established - AI agent available")
 else:
-    print("⚠ OpenAI API key not found - AI agent disabled (using keyword matching only)")
+    print("OpenAI API key not found - AI agent disabled (using keyword matching only)")
 
 
 def ask_ai(question):
