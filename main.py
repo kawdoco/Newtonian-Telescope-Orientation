@@ -13,15 +13,6 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSpinBox, QCheckBox, QComboBox, QSizePolicy
 from PyQt5.QtWidgets import QOpenGLWidget
-from OpenGL.GL import (
-    glBegin, glBlendFunc, glClear, glClearColor, glColor4f, glEnable, glEnd,
-    glHint, glLineWidth, glLoadIdentity, glMatrixMode, glPointSize, glVertex3f,
-    glViewport, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, GL_DEPTH_TEST,
-    GL_LINES, GL_LINE_SMOOTH, GL_LINE_SMOOTH_HINT, GL_MODELVIEW, GL_NICEST,
-    GL_ONE_MINUS_SRC_ALPHA, GL_POINTS, GL_PROJECTION, GL_SRC_ALPHA, GL_TRIANGLES,
-    GL_BLEND
-)
-from OpenGL.GLU import gluLookAt, gluPerspective
 from skyfield.api import Star, load, wgs84
 import geocoder
 from dotenv import load_dotenv
@@ -32,6 +23,93 @@ except ImportError:
 
 from loging import LoginWindow
 from ai import *
+
+
+OPENGL_AVAILABLE = False
+OPENGL_IMPORT_ERROR = "Not initialized"
+
+
+def _noop(*args, **kwargs):
+    return None
+
+
+# Defaults keep the app running even if OpenGL bindings are unavailable.
+glBegin = glBlendFunc = glClear = glClearColor = glColor4f = glEnable = glEnd = _noop
+glHint = glLineWidth = glLoadIdentity = glMatrixMode = glPointSize = glVertex3f = _noop
+glViewport = gluLookAt = gluPerspective = _noop
+GL_COLOR_BUFFER_BIT = 0
+GL_DEPTH_BUFFER_BIT = 0
+GL_DEPTH_TEST = 0
+GL_LINES = 0
+GL_LINE_SMOOTH = 0
+GL_LINE_SMOOTH_HINT = 0
+GL_MODELVIEW = 0
+GL_NICEST = 0
+GL_ONE_MINUS_SRC_ALPHA = 0
+GL_POINTS = 0
+GL_PROJECTION = 0
+GL_SRC_ALPHA = 0
+GL_TRIANGLES = 0
+GL_BLEND = 0
+
+
+def _setup_opengl_bindings():
+    global OPENGL_AVAILABLE, OPENGL_IMPORT_ERROR
+    global glBegin, glBlendFunc, glClear, glClearColor, glColor4f, glEnable, glEnd
+    global glHint, glLineWidth, glLoadIdentity, glMatrixMode, glPointSize, glVertex3f
+    global glViewport, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, GL_DEPTH_TEST
+    global GL_LINES, GL_LINE_SMOOTH, GL_LINE_SMOOTH_HINT, GL_MODELVIEW, GL_NICEST
+    global GL_ONE_MINUS_SRC_ALPHA, GL_POINTS, GL_PROJECTION, GL_SRC_ALPHA, GL_TRIANGLES
+    global GL_BLEND, gluLookAt, gluPerspective
+
+    if OPENGL_AVAILABLE:
+        return True
+
+    try:
+        from OpenGL import GL as _GL
+        from OpenGL import GLU as _GLU
+
+        glBegin = _GL.glBegin
+        glBlendFunc = _GL.glBlendFunc
+        glClear = _GL.glClear
+        glClearColor = _GL.glClearColor
+        glColor4f = _GL.glColor4f
+        glEnable = _GL.glEnable
+        glEnd = _GL.glEnd
+        glHint = _GL.glHint
+        glLineWidth = _GL.glLineWidth
+        glLoadIdentity = _GL.glLoadIdentity
+        glMatrixMode = _GL.glMatrixMode
+        glPointSize = _GL.glPointSize
+        glVertex3f = _GL.glVertex3f
+        glViewport = _GL.glViewport
+
+        GL_COLOR_BUFFER_BIT = _GL.GL_COLOR_BUFFER_BIT
+        GL_DEPTH_BUFFER_BIT = _GL.GL_DEPTH_BUFFER_BIT
+        GL_DEPTH_TEST = _GL.GL_DEPTH_TEST
+        GL_LINES = _GL.GL_LINES
+        GL_LINE_SMOOTH = _GL.GL_LINE_SMOOTH
+        GL_LINE_SMOOTH_HINT = _GL.GL_LINE_SMOOTH_HINT
+        GL_MODELVIEW = _GL.GL_MODELVIEW
+        GL_NICEST = _GL.GL_NICEST
+        GL_ONE_MINUS_SRC_ALPHA = _GL.GL_ONE_MINUS_SRC_ALPHA
+        GL_POINTS = _GL.GL_POINTS
+        GL_PROJECTION = _GL.GL_PROJECTION
+        GL_SRC_ALPHA = _GL.GL_SRC_ALPHA
+        GL_TRIANGLES = _GL.GL_TRIANGLES
+        GL_BLEND = _GL.GL_BLEND
+
+        gluLookAt = _GLU.gluLookAt
+        gluPerspective = _GLU.gluPerspective
+
+        OPENGL_AVAILABLE = True
+        OPENGL_IMPORT_ERROR = ""
+        return True
+    except BaseException as exc:
+        OPENGL_AVAILABLE = False
+        OPENGL_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
+        print(f"OpenGL disabled: {OPENGL_IMPORT_ERROR}")
+        return False
 
 
 class StarryBackgroundWidget(QWidget):
@@ -298,13 +376,17 @@ class OpenGLTelescopeWidget(QOpenGLWidget):
     def __init__(self, mount, parent=None):
         super().__init__(parent)
         self.mount = mount
+        self.opengl_ready = _setup_opengl_bindings()
         self.show_axes = True
+        self.show_point = True
         self.grid_size = 6.0
         self.grid_step = 0.5
         self.cone_length = 1.5
         self.cone_radius = 0.5
 
     def initializeGL(self):
+        if not self.opengl_ready:
+            return
         glClearColor(0.04, 0.06, 0.12, 1.0) 
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LINE_SMOOTH)
@@ -313,6 +395,8 @@ class OpenGLTelescopeWidget(QOpenGLWidget):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
     def resizeGL(self, w, h):
+        if not self.opengl_ready:
+            return
         if h == 0:
             h = 1
         glViewport(0, 0, w, h)
@@ -321,6 +405,8 @@ class OpenGLTelescopeWidget(QOpenGLWidget):
         gluPerspective(45.0, float(w) / float(h), 0.1, 100.0)
 
     def paintGL(self):
+        if not self.opengl_ready:
+            return
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
@@ -440,6 +526,7 @@ class Newtonian_TelescopeApp(QMainWindow):
         
         self.show_axes_val = True
         self.show_point_val = True
+        self.opengl_available = _setup_opengl_bindings()
 
         self.initUI()
 
@@ -532,9 +619,21 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.sky_map.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.sky_map.setMinimumWidth(320)
 
-        self.gl_view = OpenGLTelescopeWidget(self.mount)
-        self.gl_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.gl_view.updateGeometry()
+        if self.opengl_available:
+            self.gl_view = OpenGLTelescopeWidget(self.mount)
+            self.gl_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.gl_view.updateGeometry()
+        else:
+            self.gl_view = QLabel(
+                "3D view unavailable: OpenGL could not be initialized.\n"
+                "Install/repair GPU drivers or reinstall PyOpenGL."
+            )
+            self.gl_view.setAlignment(Qt.AlignCenter)
+            self.gl_view.setStyleSheet(
+                "color: #ffd4d4; border: 1px solid rgba(255,255,255,50);"
+                "background-color: rgba(0,0,0,110);"
+            )
+            self.gl_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         view_layout.addWidget(self.sky_map, 1)
         view_layout.addWidget(self.gl_view, 2)
