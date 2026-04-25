@@ -4,6 +4,10 @@ import csv
 import gzip
 import math
 import random
+import socket
+import select
+import struct
+import time
 import urllib.request
 import urllib.error
 import threading
@@ -183,6 +187,276 @@ class MountSystem:
         dy = self.length * np.cos(alt_rad) * np.sin(az_rad)
         dz = self.length * np.sin(alt_rad)
         return dx, dy, dz
+
+
+class StellariumLX200Bridge:
+    """Expose telescope state through a minimal LX200 TCP server for Stellarium."""
+
+    def __init__(self, app_ref, host="127.0.0.1", port=10001):
+        self.app_ref = app_ref
+        self.host = host
+        self.port = port
+        self.ts = load.timescale()
+        self._running = False
+        self._thread = None
+        self._sock = None
+        self._target_ra = None
+        self._target_dec = None
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
+
+    @staticmethod
+    def _format_ra(ra_hours):
+        total_seconds = int(round((ra_hours % 24.0) * 3600))
+        total_seconds %= 24 * 3600
+        hh = total_seconds // 3600
+        mm = (total_seconds % 3600) // 60
+        ss = total_seconds % 60
+        return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+    @staticmethod
+    def _format_dec(dec_degrees):
+        sign = "+" if dec_degrees >= 0 else "-"
+        abs_deg = abs(dec_degrees)
+        total_seconds = int(round(abs_deg * 3600))
+        dd = total_seconds // 3600
+        mm = (total_seconds % 3600) // 60
+        ss = total_seconds % 60
+        return f"{sign}{dd:02d}*{mm:02d}:{ss:02d}"
+
+    @staticmethod
+    def _parse_ra(text):
+        clean = text.strip()
+        parts = clean.split(":")
+        if len(parts) < 2:
+            raise ValueError("Invalid RA format")
+
+        hh = int(parts[0]) % 24
+        mm = float(parts[1])
+        ss = 0.0
+        if len(parts) >= 3 and parts[2] != "":
+            ss = float(parts[2])
+
+        return hh + (mm / 60.0) + (ss / 3600.0)
+
+    @staticmethod
+    def _parse_dec(text):
+        clean = text.strip()
+        sign = -1.0 if clean.startswith("-") else 1.0
+        clean = clean.lstrip("+-")
+        clean = clean.replace("*", ":")
+
+        parts = clean.split(":")
+        if len(parts) < 2:
+            raise ValueError("Invalid DEC format")
+
+        dd = int(parts[0])
+        mm = float(parts[1])
+        ss = 0.0
+        if len(parts) >= 3 and parts[2] != "":
+            ss = float(parts[2])
+
+        value = dd + (mm / 60.0) + (ss / 3600.0)
+        return sign * value
+
+    def _current_radec(self):
+        observer = wgs84.latlon(self.app_ref.device_lat, self.app_ref.device_lon)
+        t = self.ts.now()
+        apparent = observer.at(t).from_altaz(
+            alt_degrees=self.app_ref.mount.elevation,
+            az_degrees=self.app_ref.mount.azimuth,
+        )
+        ra, dec, _ = apparent.radec()
+        return ra.hours, dec.degrees
+
+    def _goto_radec(self, ra_hours, dec_degrees):
+        t = self.ts.now()
+        observer = wgs84.latlon(self.app_ref.device_lat, self.app_ref.device_lon)
+        target = Star(ra_hours=ra_hours, dec_degrees=dec_degrees)
+        alt, az, _ = observer.at(t).observe(target).apparent().altaz()
+
+        az_deg = az.degrees % 360.0
+        alt_deg = max(0.0, min(90.0, alt.degrees))
+
+        def apply_move():
+            self.app_ref.set_orientation(az_deg, alt_deg)
+            self.app_ref.plot_telescope()
+
+        QTimer.singleShot(0, apply_move)
+
+    def _handle_command(self, command):
+        if command == "GR":
+            ra_hours, _ = self._current_radec()
+            return self._format_ra(ra_hours) + "#"
+
+        if command == "GD":
+            _, dec_degrees = self._current_radec()
+            return self._format_dec(dec_degrees) + "#"
+
+        if command.startswith("Sr"):
+            try:
+                self._target_ra = self._parse_ra(command[2:])
+                return "1"
+            except Exception:
+                self._target_ra = None
+                return "0"
+
+        if command.startswith("Sd"):
+            try:
+                self._target_dec = self._parse_dec(command[2:])
+                return "1"
+            except Exception:
+                self._target_dec = None
+                return "0"
+
+        if command == "MS":
+            if self._target_ra is None or self._target_dec is None:
+                return "1"
+            self._goto_radec(self._target_ra, self._target_dec)
+            return "0"
+
+        if command in {"GVP", "GVN", "GVD"}:
+            return "NewtonianLX200#"
+
+        return "#"
+
+    def _encode_stellarium_packet(self):
+        """Build a Stellarium native telescope packet (24 bytes)."""
+        ra_hours, dec_degrees = self._current_radec()
+        ra_raw = int((ra_hours / 24.0) * 4294967296.0) & 0xFFFFFFFF
+        dec_raw = int((dec_degrees / 360.0) * 4294967296.0)
+        if dec_raw > 2147483647:
+            dec_raw -= 4294967296
+        if dec_raw < -2147483648:
+            dec_raw += 4294967296
+
+        return struct.pack(
+            "<hhqIii",
+            24,
+            0,
+            int(time.time() * 1_000_000),
+            ra_raw,
+            dec_raw,
+            0,
+        )
+
+    def _serve_lx200_client(self, conn, initial_text=""):
+        conn.settimeout(0.5)
+        buffer = initial_text
+        while self._running:
+            try:
+                chunk = conn.recv(1024)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not chunk:
+                break
+
+            buffer += chunk.decode("ascii", errors="ignore")
+            while "#" in buffer:
+                end = buffer.find("#")
+                raw_cmd = buffer[:end]
+                buffer = buffer[end + 1:]
+
+                cmd = raw_cmd.strip()
+                if not cmd:
+                    continue
+                if ":" in cmd:
+                    cmd = cmd.split(":")[-1]
+                if cmd.startswith(":"):
+                    cmd = cmd[1:]
+
+                if not cmd:
+                    continue
+
+                print(f"LX200 cmd: {cmd}")
+                response = self._handle_command(cmd)
+                if response:
+                    try:
+                        conn.sendall(response.encode("ascii"))
+                    except OSError:
+                        break
+
+    def _serve_stellarium_native_client(self, conn):
+        conn.settimeout(0.2)
+        while self._running:
+            try:
+                conn.sendall(self._encode_stellarium_packet())
+            except OSError:
+                break
+
+            # Consume optional inbound bytes and detect remote close.
+            try:
+                inbound = conn.recv(1024)
+                if inbound == b"":
+                    break
+            except socket.timeout:
+                pass
+            except OSError:
+                break
+
+            time.sleep(0.3)
+
+    def _serve(self):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((self.host, self.port))
+        server.listen(1)
+        server.setblocking(False)
+        self._sock = server
+        print(f"Stellarium LX200 bridge listening on {self.host}:{self.port}")
+
+        try:
+            while self._running:
+                readable, _, _ = select.select([server], [], [], 0.25)
+                if not readable:
+                    continue
+                conn, addr = server.accept()
+                print(f"Stellarium client connected: {addr}")
+                with conn:
+                    initial = b""
+                    try:
+                        conn.settimeout(0.4)
+                        initial = conn.recv(1024)
+                    except socket.timeout:
+                        initial = b""
+                    except OSError:
+                        initial = b""
+
+                    # LX200 clients send ASCII commands ending with '#'.
+                    initial_text = initial.decode("ascii", errors="ignore")
+                    looks_like_lx200 = ("#" in initial_text) or (":" in initial_text)
+
+                    if looks_like_lx200:
+                        self._serve_lx200_client(conn, initial_text=initial_text)
+                    else:
+                        print("Using Stellarium native protocol stream")
+                        self._serve_stellarium_native_client(conn)
+                print("Stellarium client disconnected")
+        except OSError as exc:
+            if self._running:
+                print(f"Stellarium bridge stopped with error: {exc}")
+        finally:
+            try:
+                server.close()
+            except OSError:
+                pass
+            self._sock = None
 
 
 class SkyCatalog:
@@ -527,6 +801,7 @@ class Newtonian_TelescopeApp(QMainWindow):
         self.show_axes_val = True
         self.show_point_val = True
         self.opengl_available = _setup_opengl_bindings()
+        self.stellarium_bridge = StellariumLX200Bridge(self, host="127.0.0.1", port=10001)
 
         self.initUI()
 
@@ -536,6 +811,7 @@ class Newtonian_TelescopeApp(QMainWindow):
 
         self.apply_preset(1)
         self.plot_telescope()
+        self.stellarium_bridge.start()
 
         QTimer.singleShot(0, self.initialize_runtime_data)
 
@@ -653,6 +929,10 @@ class Newtonian_TelescopeApp(QMainWindow):
         bottom_layout.addWidget(self.watermark_label, alignment=Qt.AlignRight)
 
         layout.addLayout(bottom_layout)
+
+        self.bridge_label = QLabel("Stellarium Bridge: LX200 127.0.0.1:10001")
+        self.bridge_label.setStyleSheet("color: #9ad0ff; font-size: 10px;")
+        layout.addWidget(self.bridge_label, alignment=Qt.AlignLeft)
 
         controls = QHBoxLayout()
 
@@ -919,6 +1199,10 @@ class Newtonian_TelescopeApp(QMainWindow):
             self.gl_view.show_axes = self.show_axes_val
             self.gl_view.show_point = self.show_point_val
             self.gl_view.update()
+
+    def closeEvent(self, event):
+        self.stellarium_bridge.stop()
+        super().closeEvent(event)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
