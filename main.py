@@ -197,6 +197,8 @@ class StellariumLX200Bridge:
         self.host = host
         self.port = port
         self.ts = load.timescale()
+        self.eph = load("de421.bsp")
+        self.earth = self.eph["earth"]
         self._running = False
         self._thread = None
         self._sock = None
@@ -287,7 +289,7 @@ class StellariumLX200Bridge:
         t = self.ts.now()
         observer = wgs84.latlon(self.app_ref.device_lat, self.app_ref.device_lon)
         target = Star(ra_hours=ra_hours, dec_degrees=dec_degrees)
-        alt, az, _ = observer.at(t).observe(target).apparent().altaz()
+        alt, az, _ = (self.earth + observer).at(t).observe(target).apparent().altaz()
 
         az_deg = az.degrees % 360.0
         alt_deg = max(0.0, min(90.0, alt.degrees))
@@ -354,6 +356,29 @@ class StellariumLX200Bridge:
             0,
         )
 
+    @staticmethod
+    def _decode_stellarium_goto_packet(packet):
+        """Decode Stellarium native packet and return (ra_hours, dec_degrees) for goto packets."""
+        if len(packet) < 20:
+            return None
+
+        packet_len, packet_type = struct.unpack_from("<hh", packet, 0)
+        if packet_type != 0 or packet_len < 20:
+            return None
+
+        if len(packet) < packet_len:
+            return None
+
+        _, _, _, ra_raw, dec_raw = struct.unpack_from("<hhqIi", packet, 0)
+        ra_hours = ((ra_raw & 0xFFFFFFFF) / 4294967296.0) * 24.0
+        dec_degrees = (dec_raw / 4294967296.0) * 360.0
+
+        # Declination outside physical sky bounds indicates a malformed packet.
+        if dec_degrees < -90.0 or dec_degrees > 90.0:
+            return None
+
+        return ra_hours, dec_degrees
+
     def _serve_lx200_client(self, conn, initial_text=""):
         conn.settimeout(0.5)
         buffer = initial_text
@@ -376,8 +401,6 @@ class StellariumLX200Bridge:
                 cmd = raw_cmd.strip()
                 if not cmd:
                     continue
-                if ":" in cmd:
-                    cmd = cmd.split(":")[-1]
                 if cmd.startswith(":"):
                     cmd = cmd[1:]
 
@@ -392,25 +415,104 @@ class StellariumLX200Bridge:
                     except OSError:
                         break
 
-    def _serve_stellarium_native_client(self, conn):
+    def _serve_stellarium_native_client(self, conn, initial_bytes=b""):
         conn.settimeout(0.2)
+        inbound_buffer = initial_bytes or b""
+        next_tx = 0.0
         while self._running:
-            try:
-                conn.sendall(self._encode_stellarium_packet())
-            except OSError:
-                break
+            now = time.monotonic()
+            if now >= next_tx:
+                try:
+                    conn.sendall(self._encode_stellarium_packet())
+                except OSError:
+                    break
+                next_tx = now + 0.3
 
-            # Consume optional inbound bytes and detect remote close.
             try:
                 inbound = conn.recv(1024)
                 if inbound == b"":
                     break
+                if inbound:
+                    inbound_buffer += inbound
+
+                    while len(inbound_buffer) >= 2:
+                        packet_len = struct.unpack_from("<h", inbound_buffer, 0)[0]
+
+                        if packet_len < 20 or packet_len > 256:
+                            inbound_buffer = inbound_buffer[1:]
+                            continue
+
+                        if len(inbound_buffer) < packet_len:
+                            break
+
+                        packet = inbound_buffer[:packet_len]
+                        inbound_buffer = inbound_buffer[packet_len:]
+
+                        target = self._decode_stellarium_goto_packet(packet)
+                        if target is None:
+                            continue
+
+                        ra_hours, dec_degrees = target
+                        print(
+                            "Stellarium native goto: "
+                            f"RA {ra_hours:.5f}h DEC {dec_degrees:.5f}deg"
+                        )
+                        self._goto_radec(ra_hours, dec_degrees)
             except socket.timeout:
                 pass
             except OSError:
                 break
 
-            time.sleep(0.3)
+            time.sleep(0.05)
+
+    def _detect_client_protocol(self, conn):
+        """Detect whether the connected client is LX200 ASCII or Stellarium native binary."""
+        deadline = time.monotonic() + 1.5
+        buffer = b""
+        conn.settimeout(0.15)
+
+        while self._running and time.monotonic() < deadline:
+            try:
+                chunk = conn.recv(1024)
+            except socket.timeout:
+                continue
+            except OSError:
+                return "closed", b""
+
+            if chunk == b"":
+                return "closed", b""
+
+            if not chunk:
+                continue
+
+            buffer += chunk
+
+            # LX200 commands are plain ASCII and usually include ':' prefixes and '#' suffixes.
+            is_ascii = all((32 <= b <= 126) or b in (9, 10, 13) for b in buffer)
+            if is_ascii and (b":" in buffer or b"#" in buffer):
+                return "lx200", buffer
+
+            # Native Stellarium packets begin with little-endian packet length.
+            if len(buffer) >= 2:
+                packet_len = struct.unpack_from("<h", buffer, 0)[0]
+                if 20 <= packet_len <= 256:
+                    return "native", buffer
+
+            # Binary-looking payload is very likely native protocol.
+            if any((b < 32 and b not in (9, 10, 13)) or b > 126 for b in buffer):
+                return "native", buffer
+
+        if not buffer:
+            return "native", b""
+
+        try:
+            text = buffer.decode("ascii")
+            if ":" in text or "#" in text:
+                return "lx200", buffer
+        except UnicodeDecodeError:
+            pass
+
+        return "native", buffer
 
     def _serve(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -429,24 +531,18 @@ class StellariumLX200Bridge:
                 conn, addr = server.accept()
                 print(f"Stellarium client connected: {addr}")
                 with conn:
-                    initial = b""
-                    try:
-                        conn.settimeout(0.4)
-                        initial = conn.recv(1024)
-                    except socket.timeout:
-                        initial = b""
-                    except OSError:
-                        initial = b""
+                    protocol, initial = self._detect_client_protocol(conn)
+                    if protocol == "closed":
+                        print("Client disconnected before protocol detection")
+                        continue
 
-                    # LX200 clients send ASCII commands ending with '#'.
-                    initial_text = initial.decode("ascii", errors="ignore")
-                    looks_like_lx200 = ("#" in initial_text) or (":" in initial_text)
-
-                    if looks_like_lx200:
+                    if protocol == "lx200":
+                        initial_text = initial.decode("ascii", errors="ignore")
+                        print("Using LX200 protocol")
                         self._serve_lx200_client(conn, initial_text=initial_text)
                     else:
                         print("Using Stellarium native protocol stream")
-                        self._serve_stellarium_native_client(conn)
+                        self._serve_stellarium_native_client(conn, initial_bytes=initial)
                 print("Stellarium client disconnected")
         except OSError as exc:
             if self._running:
